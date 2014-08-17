@@ -1,0 +1,5 @@
+deb http://ports.ubuntu.com/ trusty main restricted universe
+deb-src http://ports.ubuntu.com/ trusty main restricted universe
+
+deb http://ports.ubuntu.com/ trusty-security main restricted universe
+deb-src http://ports.ubuntu.com/ trusty-security main restricted universe
