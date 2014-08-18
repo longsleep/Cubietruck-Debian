@@ -4,9 +4,15 @@
 # Patched for Ubuntu 14.04 by Simon Eisenmann - struktur AG
 #
 
+#
+# http://linux-sunxi.org/Linux_Kernel
+# http://linux-sunxi.org/Linux_mainlining_effort
+#
+
 # MISSING:
 #  Allwinner SoCs PWM support (https://lkml.org/lkml/2014/5/19/568)
 #  Allwinner Security System crypto accelerator (http://lists.infradead.org/pipermail/linux-arm-kernel/2014-June/265465.html)
+#  sunxi NAND Flash Controller support (http://lists.infradead.org/pipermail/linux-arm-kernel/2014-March/239885.html)
 
 #set -x
 
@@ -46,19 +52,19 @@ if [ "$UID" -ne 0 ]
 fi
 
 clear
-echo "Building $VERSION."
+echo "------ Building $VERSION."
 
 #--------------------------------------------------------------------------------
 # Downloading necessary files
 #--------------------------------------------------------------------------------
-echo "Downloading necessary files."
+echo "------ Downloading necessary files."
 #apt-get -qq -y install zip binfmt-support bison build-essential ccache debootstrap flex gawk gcc-arm-linux-gnueabi gcc-arm-linux-gnueabihf lvm2 qemu-user-static texinfo texlive u-boot-tools uuid-dev zlib1g-dev unzip libncurses5-dev pkg-config libusb-1.0-0-dev parted
 
 #--------------------------------------------------------------------------------
 # Preparing output / destination files
 #--------------------------------------------------------------------------------
 
-echo "Fetching files from Github."
+echo "------ Fetching files from Github."
 mkdir -p $DEST/output
 
 if [ -d "$DEST/u-boot-sunxi-next" ]
@@ -135,24 +141,24 @@ if [ "$SOURCE_COMPILE" = "yes" ]; then
 #--------------------------------------------------------------------------------
 
 # boot loader
-echo "------ Compiling universal boot loader"
+echo "------ Compiling universal boot loader."
 #cd $DEST/u-boot-sunxi
 #make clean && make $CTHREADS 'cubietruck' CROSS_COMPILE=arm-linux-gnueabihf-
 
 # boot loader next
 cd $DEST/u-boot-sunxi-next
-make clean && make $CTHREADS Cubietruck_config CROSS_COMPILE=arm-linux-gnueabihf- && make $CTHREADS CROSS_COMPILE=arm-linux-gnueabihf-
+make clean && make $CTHREADS Cubietruck_defconfig CROSS_COMPILE=arm-linux-gnueabihf- && make $CTHREADS CROSS_COMPILE=arm-linux-gnueabihf-
 # currently broken. using binary
 #cp $SRC/bin/uboot-next.bin $DEST/u-boot-sunxi-next/u-boot-sunxi-with-spl.bin
 
-# sunxi tools
-echo "------ Compiling sunxi tools"
+# Sunxi Tools.
+echo "------ Compiling sunxi tools."
 cd $DEST/sunxi-tools
 make clean && make fex2bin && make bin2fex
 cp fex2bin bin2fex /usr/local/bin/
 
 # kernel image stable
-echo "------ Compiling kernel"
+echo "------ Compiling kernel."
 #cd $DEST/linux-sunxi
 #make clean
 ## Adding wlan firmware to kernel source
@@ -227,7 +233,7 @@ zip sunxi_kernel_"$VER"_mod_head_fw.zip sunxi_kernel_"$VER"_mod_head_fw.*
 #--------------------------------------------------------------------------------
 # Creating SD Images
 #--------------------------------------------------------------------------------
-echo "------ Creating SD Images"
+echo "------ Creating SD images."
 cd $DEST/output
 # create 1G image and mount image to next free loop device
 dd if=/dev/zero of=debian_rootfs.raw bs=1M count=1000 status=noxfer
@@ -235,7 +241,7 @@ LOOP=$(losetup -f)
 losetup $LOOP debian_rootfs.raw
 sync
 
-echo "Partitioning, writing boot loader and mounting file-system."
+echo "------ Partitioning, writing boot loader and mounting file-system."
 # create one partition starting at 2048 which is default
 parted -s $LOOP -- mklabel msdos
 sleep 1
@@ -244,7 +250,7 @@ sleep 1
 partprobe $LOOP
 sleep 1
 
-echo "Writing boot loader."
+echo "------ Writing boot loader."
 dd if=$DEST/output/boot/uboot.bin of=$LOOP bs=1024 seek=8 status=noxfer
 sync
 sleep 1
@@ -264,37 +270,38 @@ tune2fs -o journal_data_writeback $LOOP
 # label it
 e2label $LOOP "Ubuntu"
 
-# create mount point and mount image
-mkdir -p $DEST/output/sdcard/
-mount -t ext4 $LOOP $DEST/output/sdcard/
+rootfs="${DEST}/output/sdcard"
 
-echo "------ Install basic filesystem"
-# install base system
-debootstrap --no-check-gpg --arch=armhf --foreign $RELEASE $DEST/output/sdcard/
-# we need this
-cp /usr/bin/qemu-arm-static $DEST/output/sdcard/usr/bin/
-# enable arm binary format so that the cross-architecture chroot environment will work
+# create mount point and mount image
+mkdir -p $rootfs
+mount -t ext4 $LOOP $rootfs
+
+echo "------ Install base system."
+
+# Install base system.
+debootstrap --no-check-gpg --foreign --arch=armhf $RELEASE $rootfs
+cp /usr/bin/qemu-arm-static $rootfs/usr/bin/
+
+# Enable arm binary format so that the cross-architecture chroot environment will work.
 test -e /proc/sys/fs/binfmt_misc/qemu-arm || update-binfmts --enable qemu-arm
-# mount proc inside chroot
-mount -t proc chproc $DEST/output/sdcard/proc
+
+mount -t proc chproc $rootfs/proc
+mount -t sysfs chsys $rootfs/sys
+mount -t devtmpfs chdev $rootfs/dev
+mount -t devpts chpts $rootfs/dev/pts
+
 # second stage unmounts proc
-chroot $DEST/output/sdcard /bin/bash -c "/debootstrap/debootstrap --second-stage"
-# mount proc, sys and dev
-mount -t proc chproc $DEST/output/sdcard/proc
-mount -t sysfs chsys $DEST/output/sdcard/sys
-# This works on half the systems I tried.  Else use bind option
-mount -t devtmpfs chdev $DEST/output/sdcard/dev || mount --bind /dev $DEST/output/sdcard/dev
-mount -t devpts chpts $DEST/output/sdcard/dev/pts
+chroot $rootfs /debootstrap/debootstrap --second-stage
 
 # Prevent services from starting during installation.
-echo <<EOT > $DEST/output/sdcard/usr/sbin/policy-rc.d
+echo <<EOT > $rootfs/usr/sbin/policy-rc.d
 #!/bin/sh
 exit 101
 EOT
-chmod +x $DEST/output/sdcard/usr/sbin/policy-rc.d
+chmod +x $rootfs/usr/sbin/policy-rc.d
 
 # update /etc/issue
-cat <<EOT > $DEST/output/sdcard/etc/issue
+cat <<EOT > $rootfs/etc/issue
 Ubuntu $VERSION \n \l
 
 EOT
@@ -304,23 +311,23 @@ EOT
 #touch $DEST/output/sdcard/etc/motd
 
 # choose proper apt list
-cp $SRC/config/sources.list.$RELEASE $DEST/output/sdcard/etc/apt/sources.list
+cp $SRC/config/sources.list.$RELEASE $rootfs/etc/apt/sources.list
 
 #cat <<EOT > $DEST/output/sdcard/etc/apt/sources.list
 # your custom repo
 #EOT
 
 # update, fix locales
-chroot $DEST/output/sdcard /bin/bash -c "apt-get update"
-chroot $DEST/output/sdcard /bin/bash -c "apt-get -qq -y dist-upgrade"
-chroot $DEST/output/sdcard /bin/bash -c "apt-get -qq -y install locales makedev"
+chroot $rootfs /bin/bash -c "apt-get update"
+chroot $rootfs /bin/bash -c "apt-get -qq -y dist-upgrade"
+chroot $rootfs /bin/bash -c "apt-get -qq -y install locales makedev"
 #sed -i "s/^# $DEST_LANG/$DEST_LANG/" $DEST/output/sdcard/etc/locale.gen
-chroot $DEST/output/sdcard /bin/bash -c "locale-gen $DEST_LANG"
-chroot $DEST/output/sdcard /bin/bash -c "export LANG=$DEST_LANG LANGUAGE=$DEST_LANG DEBIAN_FRONTEND=noninteractive"
-chroot $DEST/output/sdcard /bin/bash -c "update-locale LANG=$DEST_LANG LANGUAGE=$DEST_LANG LC_MESSAGES=POSIX"
+chroot $rootfs /bin/bash -c "locale-gen $DEST_LANG"
+chroot $rootfs /bin/bash -c "export LANG=$DEST_LANG LANGUAGE=$DEST_LANG DEBIAN_FRONTEND=noninteractive"
+chroot $rootfs /bin/bash -c "update-locale LANG=$DEST_LANG LANGUAGE=$DEST_LANG LC_MESSAGES=POSIX"
 
 # set up 'apt
-cat <<END > $DEST/output/sdcard/etc/apt/apt.conf.d/71-no-recommends
+cat <<END > $rootfs/etc/apt/apt.conf.d/71-no-recommends
 APT::Install-Recommends "0";
 APT::Install-Suggests "0";
 END
@@ -351,10 +358,10 @@ END
 # script to install to NAND & SATA and kernel switchers
 #cp $SRC/scripts/2next.sh $DEST/output/sdcard/root
 #cp $SRC/scripts/2current.sh $DEST/output/sdcard/root
-cp $SRC/scripts/nand-install.sh $DEST/output/sdcard/root
+cp $SRC/scripts/nand-install.sh $rootfs/root
 #cp $SRC/scripts/sata-install.sh $DEST/output/sdcard/root
-cp $SRC/bin/nand1-cubietruck-debian-boot.tgz $DEST/output/sdcard/root
-cp $SRC/bin/ramlog_2.0.0_all.deb $DEST/output/sdcard/tmp
+cp $SRC/bin/nand1-cubietruck-debian-boot.tgz $rootfs/root
+cp $SRC/bin/ramlog_2.0.0_all.deb $rootfs/tmp
 
 # bluetooth device enabler
 #cp $SRC/bin/brcm_patchram_plus $DEST/output/sdcard/usr/local/bin
@@ -364,45 +371,31 @@ cp $SRC/bin/ramlog_2.0.0_all.deb $DEST/output/sdcard/tmp
 #chroot $DEST/output/sdcard /bin/bash -c "chmod +x /etc/init.d/brcm40183-patch"
 #chroot $DEST/output/sdcard /bin/bash -c "update-rc.d brcm40183-patch defaults"
 
-## install custom bashrc
-##cat $SRC/scripts/bashrc >> $DEST/output/sdcard/etc/bash.bashrc
-
-echo "Installing aditional applications"
-chroot $DEST/output/sdcard /bin/bash -c "apt-get -qq -y install u-boot-tools makedev libfuse2 libc6 libnl-3-dev alsa-utils sysfsutils hddtemp bc screen hdparm libfuse2 ntfs-3g bash-completion lsof sudo git hostapd dosfstools htop openssh-server ca-certificates module-init-tools dhcp3-client udev ifupdown iproute iputils-ping ntp rsync usbutils pciutils wireless-tools wpasupplicant procps parted cpufrequtils unzip bridge-utils"
+# Install aditional applications.
+chroot $rootfs /bin/bash -c "apt-get -qq -y install u-boot-tools makedev libfuse2 libc6 libnl-3-dev alsa-utils sysfsutils hddtemp bc screen hdparm libfuse2 ntfs-3g bash-completion lsof sudo git hostapd dosfstools htop openssh-server ca-certificates module-init-tools dhcp3-client udev ifupdown iproute iputils-ping ntp rsync usbutils pciutils wireless-tools wpasupplicant procps parted cpufrequtils unzip bridge-utils"
 # removed in 2.4 #chroot $DEST/output/sdcard /bin/bash -c "apt-get -qq -y install console-setup console-data"
-chroot $DEST/output/sdcard /bin/bash -c "apt-get -y clean"
-
-# change dynamic motd
-#ZAMENJAJ='echo "" > /var/run/motd.dynamic'
-#ZAMENJAJ=$ZAMENJAJ"\n   if [ \$(cat /proc/meminfo | grep MemTotal | grep -o '[0-9]\\\+') -ge 1531749 ]; then"
-#ZAMENJAJ=$ZAMENJAJ"\n           toilet -f standard -F metal  \"Cubietruck\" >> /var/run/motd.dynamic"
-#ZAMENJAJ=$ZAMENJAJ"\n   else"
-#ZAMENJAJ=$ZAMENJAJ"\n           toilet -f standard -F metal  \"Cubieboard\" >> /var/run/motd.dynamic"
-#ZAMENJAJ=$ZAMENJAJ"\n   fi"
-#ZAMENJAJ=$ZAMENJAJ"\n   echo \"\" >> /var/run/motd.dynamic"
-#sed -e s,"# Update motd","$ZAMENJAJ",g 	-i $DEST/output/sdcard/etc/init.d/motd
-#sed -e s,"uname -snrvm > /var/run/motd.dynamic","",g  -i $DEST/output/sdcard/etc/init.d/motd
+chroot $rootfs /bin/bash -c "apt-get -y clean"
 
 # copy lirc configuration
 #cp $DEST/sunxi-lirc/lirc_init_files/hardware.conf $DEST/output/sdcard/etc/lirc
 #cp $DEST/sunxi-lirc/lirc_init_files/init.d_lirc $DEST/output/sdcard/etc/init.d/lirc
 
-# ramlog
-chroot $DEST/output/sdcard /bin/bash -c "dpkg -i /tmp/ramlog_2.0.0_all.deb"
-sed -e 's/TMPFS_RAMFS_SIZE=/TMPFS_RAMFS_SIZE=256m/g' -i $DEST/output/sdcard/etc/default/ramlog
-sed -e 's/# Required-Start:    $remote_fs $time/# Required-Start:    $remote_fs $time ramlog/g' -i $DEST/output/sdcard/etc/init.d/rsyslog
-sed -e 's/# Required-Stop:     umountnfs $time/# Required-Stop:     umountnfs $time ramlog/g' -i $DEST/output/sdcard/etc/init.d/rsyslog
+# Ramlog.
+chroot $rootfs /bin/bash -c "dpkg -i /tmp/ramlog_2.0.0_all.deb"
+sed -e 's/TMPFS_RAMFS_SIZE=/TMPFS_RAMFS_SIZE=256m/g' -i $rootfs/etc/default/ramlog
+sed -e 's/# Required-Start:    $remote_fs $time/# Required-Start:    $remote_fs $time ramlog/g' -i $rootfs/etc/init.d/rsyslog
+sed -e 's/# Required-Stop:     umountnfs $time/# Required-Stop:     umountnfs $time ramlog/g' -i $rootfs/etc/init.d/rsyslog
 
-# console
-chroot $DEST/output/sdcard /bin/bash -c "export TERM=linux"
+# Console.
+chroot $rootfs /bin/bash -c "export TERM=linux"
 
-# Change Time zone data
-echo $TZDATA > $DEST/output/sdcard/etc/timezone
-chroot $DEST/output/sdcard /bin/bash -c "dpkg-reconfigure -f noninteractive tzdata"
+# Change Time zone data.
+echo $TZDATA > $rootfs/etc/timezone
+chroot $rootfs /bin/bash -c "dpkg-reconfigure -f noninteractive tzdata"
 
-# configure MIN / MAX Speed for cpufrequtils
-sed -e 's/MIN_SPEED="0"/MIN_SPEED="480000"/g' -i $DEST/output/sdcard/etc/init.d/cpufrequtils
-sed -e 's/MAX_SPEED="0"/MAX_SPEED="1010000"/g' -i $DEST/output/sdcard/etc/init.d/cpufrequtils
+# Configure MIN / MAX Speed for cpufrequtils.
+sed -e 's/MIN_SPEED="0"/MIN_SPEED="480000"/g' -i $rootfs/etc/init.d/cpufrequtils
+sed -e 's/MAX_SPEED="0"/MAX_SPEED="1010000"/g' -i $rootfs/etc/init.d/cpufrequtils
 #sed -e 's/ondemand/interactive/g' -i $DEST/output/sdcard/etc/init.d/cpufrequtils
 
 # eth0 should run on a dedicated processor
@@ -412,21 +405,22 @@ sed -e 's/MAX_SPEED="0"/MAX_SPEED="1010000"/g' -i $DEST/output/sdcard/etc/init.d
 #exit 0
 #EOF
 
-# set root password
-chroot $DEST/output/sdcard /bin/bash -c "(echo $ROOTPWD;echo $ROOTPWD;) | passwd root"
-# force password change upon first login
+# Set root password.
+chroot $rootfs /bin/bash -c "(echo $ROOTPWD;echo $ROOTPWD;) | passwd root"
+
+# Force password change upon first login.
 #chroot $DEST/output/sdcard /bin/bash -c "chage -d 0 root"
 
+# Enable root login for latest ssh on trusty.
 if [ "$RELEASE" = "trusty" ]; then
-# enable root login for latest ssh on trusty
-sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' $DEST/output/sdcard/etc/ssh/sshd_config || fail
+sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' $rootfs/etc/ssh/sshd_config || fail
 fi
 
 # set hostname
-echo $HOST > $DEST/output/sdcard/etc/hostname
+echo $HOST > $rootfs/etc/hostname
 
 # set hostname in hosts file
-cat > $DEST/output/sdcard/etc/hosts <<EOT
+cat > $rootfs/etc/hosts <<EOT
 127.0.0.1   localhost cubie
 ::1         localhost cubie ip6-localhost ip6-loopback
 fe00::0     ip6-localnet
@@ -435,14 +429,14 @@ ff02::1     ip6-allnodes
 ff02::2     ip6-allrouters
 EOT
 
-# change default I/O scheduler, noop for flash media and SSD, cfq for mechanical drive
-cat <<EOT >> $DEST/output/sdcard/etc/sysfs.conf
+# Change default I/O scheduler.
+cat <<EOT >> $rootfs/etc/sysfs.conf
 block/mmcblk0/queue/scheduler = noop
-block/sda/queue/scheduler = cfq
+block/sda/queue/scheduler = noop
 EOT
 
 # load modules
-cat <<EOT >> $DEST/output/sdcard/etc/modules
+cat <<EOT >> $rootfs/etc/modules
 #hci_uart
 #gpio_sunxi
 #bt_gpio
@@ -456,14 +450,9 @@ cat <<EOT >> $DEST/output/sdcard/etc/modules
 # if you want access point mode, load wifi module this way: bcmdhd op_mode=2
 # and edit /etc/init.d/hostapd change DAEMON_CONF=/etc/hostapd.conf ; edit your wifi net settings in hostapd.conf ; reboot
 EOT
-# create copy
-#cp $DEST/output/sdcard/etc/modules $DEST/output/sdcard/etc/modules.current
-# create for next
-#touch $DEST/output/sdcard/etc/modules.next
 
-
-# create interfaces configuration
-cat <<EOT >> $DEST/output/sdcard/etc/network/interfaces
+# Create interfaces configuration.
+cat <<EOT >> $rootfs/etc/network/interfaces
 auto eth0
 allow-hotplug eth0
 iface eth0 inet dhcp
@@ -477,9 +466,8 @@ iface eth0 inet dhcp
 # to generate proper encrypted key: wpa_passphrase yourSSID yourpassword
 EOT
 
-
-# create interfaces if you want to have AP. /etc/modules must be: bcmdhd op_mode=2
-cat <<EOT >> $DEST/output/sdcard/etc/network/interfaces.hostapd
+# Create interfaces if you want to have AP. /etc/modules must be: bcmdhd op_mode=2.
+cat <<EOT >> $rootfs/etc/network/interfaces.hostapd
 auto lo br0
 iface lo inet loopback
 
@@ -494,7 +482,7 @@ bridge_ports eth0 wlan0
 hwaddress ether # will be added at first boot
 EOT
 
-# add noatime to root FS
+# Add noatime to root FS.
 echo "/dev/mmcblk0p1  /           ext4    defaults,noatime,nodiratime,data=writeback,commit=600,errors=remount-ro        0       0" >> $DEST/output/sdcard/etc/fstab
 
 # flash media tunning
@@ -504,9 +492,8 @@ echo "/dev/mmcblk0p1  /           ext4    defaults,noatime,nodiratime,data=write
 #sed -e 's/#SHM_SIZE=/SHM_SIZE=128M/g' -i $DEST/output/sdcard/etc/default/tmpfs
 #sed -e 's/#TMP_SIZE=/TMP_SIZE=1G/g' -i $DEST/output/sdcard/etc/default/tmpfs
 
-# enable serial console (Debian/sysvinit way)
-#echo T0:2345:respawn:/sbin/getty -L ttyS0 115200 vt100 >> $DEST/output/sdcard/etc/inittab
-cat <<EOT >> $DEST/output/sdcard/etc/init/ttyS0.conf
+# Enable serial console.
+cat <<EOT >> $rootfs/etc/init/ttyS0.conf
 # ttyS0 - getty
 #
 # This service maintains a getty on ttyS0 from the point the system is
@@ -520,13 +507,13 @@ exec /sbin/getty -L 115200 ttyS0 vt100
 EOT
 
 # uncompress kernel
-cd $DEST/output/sdcard/
+cd $rootfs
 ls ../*.tar | xargs -i tar xf {}
 rm $DEST/output/*.md5
 rm $DEST/output/*.tar
 
 # remove false links to the kernel source
-find $DEST/output/sdcard/lib/modules -type l -exec rm -f {} \;
+find $rootfs/lib/modules -type l -exec rm -f {} \;
 
 ## USB redirector tools http://www.incentivespro.com
 #cd $DEST
@@ -560,20 +547,35 @@ find $DEST/output/sdcard/lib/modules -type l -exec rm -f {} \;
 # sunxi-tools
 cd $DEST/sunxi-tools
 make clean && make $CTHREADS 'fex2bin' CC=arm-linux-gnueabihf-gcc && make $CTHREADS 'bin2fex' CC=arm-linux-gnueabihf-gcc && make $CTHREADS 'nand-part' CC=arm-linux-gnueabihf-gcc
-cp fex2bin $DEST/output/sdcard/usr/bin/
-cp bin2fex $DEST/output/sdcard/usr/bin/
-cp nand-part $DEST/output/sdcard/usr/bin/
-sync
-sleep 5
+cp fex2bin $rootfs/usr/bin/
+cp bin2fex $rootfs/usr/bin/
+cp nand-part $rootfs/usr/bin/
 
 # cleanup
-rm -f $DEST/output/sdcard/usr/sbin/policy-rc.d
+rm -f $rootfs/usr/sbin/policy-rc.d
+
+sync
+sleep 30
+
+# Kill processes still running in chroot.
+for rootpath in /proc/*/root; do
+    rootlink=$(readlink $rootpath)
+    if [ "x$rootlink" != "x" ]; then
+        if [ "x${rootlink:0:${#rootfs}}" = "x$rootfs" ]; then
+            # this process is in the chroot...
+            PID=$(basename $(dirname "$rootpath"))
+            kill -9 "$PID"
+        fi
+    fi
+done
+
+sleep 5
 
 # unmount proc, sys and dev from chroot
-umount -l $DEST/output/sdcard/dev/pts
-umount -l $DEST/output/sdcard/dev
-umount -l $DEST/output/sdcard/proc
-umount -l $DEST/output/sdcard/sys
+umount -l $rootfs/dev/pts || true
+umount -l $rootfs/dev || true
+umount -l $rootfs/proc || true
+umount -l $rootfs/sys || true
 
 # let's create nice file name
 VERSION="${VERSION// /_}"
@@ -583,32 +585,21 @@ HDMI=$VERSION"_hdmi"
 
 sleep 5
 
-rm $DEST/output/sdcard/usr/bin/qemu-arm-static
+rm $rootfs/usr/bin/qemu-arm-static
+
 # umount images
-umount -l $DEST/output/sdcard/
+umount -l $rootfs
 losetup -d $LOOP
 
 cp $DEST/output/debian_rootfs.raw $DEST/output/$HDMI.raw
 cd $DEST/output/
+
 # creating MD5 sum
 md5sum $HDMI.raw > $HDMI.md5
 zip $HDMI.zip $HDMI.*
 rm $HDMI.raw $HDMI.md5
 
-# let's create VGA version
-#LOOP=$(losetup -f)
-#losetup -o 1048576 $LOOP $DEST/output/debian_rootfs.raw
-#mount $LOOP $DEST/output/sdcard/
-#sed -e 's/ct-hdmi.bin/ct-vga.bin/g' -i $DEST/output/sdcard/boot/uEnv.ct
-##sed -e 's/cb2-hdmi.bin/cb2-vga.bin/g' -i $DEST/output/sdcard/boot/uEnv.cb2
-#umount -l $DEST/output/sdcard/
-#losetup -d $LOOP
-#mv $DEST/output/debian_rootfs.raw $DEST/output/$VGA.raw
-#cd $DEST/output/
-# creating MD5 sum
-#md5sum $VGA.raw > $VGA.md5
-#zip $VGA.zip $VGA.*
-#rm $VGA.raw $VGA.md5
 end=`date +%s`
 runtime=$((end-start))
-echo "Runtime $runtime sec."
+
+echo "done after $runtime sec."
