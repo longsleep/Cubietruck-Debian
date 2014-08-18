@@ -3,6 +3,13 @@
 # Created by Igor Pecovnik, www.igorpecovnik.com
 # Patched for Ubuntu 14.04 by Simon Eisenmann - struktur AG
 #
+
+# MISSING:
+#  Allwinner SoCs PWM support (https://lkml.org/lkml/2014/5/19/568)
+#  Allwinner Security System crypto accelerator (http://lists.infradead.org/pipermail/linux-arm-kernel/2014-June/265465.html)
+
+#set -x
+
 # --- Configuration -------------------------------------------------------------
 #
 #
@@ -81,9 +88,10 @@ else
 fi
 if [ -d "$DEST/linux-sunxi-next" ]
 then
-	cd $DEST/linux-sunxi-next; git pull -f; cd $SRC
+	echo "Using existing kernel checkout ..."
+	#cd $DEST/linux-sunxi-next; git pull -f; cd $SRC
 else
-	git clone https://github.com/linux-sunxi/linux-sunxi/ -b sunxi-next $DEST/linux-sunxi-next      # Experimental kernel source
+	git clone https://github.com/longsleep/linux-sunxi/ -b master $DEST/linux-sunxi-next      # Experimental kernel source
 fi
 #if [ -d "$DEST/linux-sunxi" ]
 #then
@@ -106,21 +114,21 @@ if [ "$SOURCE_COMPILE" = "yes" ]; then
 #--------------------------------------------------------------------------------
 
 # Applying Patch for CB2 stability
-#sed -e 's/.clock = 480/.clock = 432/g' -i $DEST/u-boot-sunxi/board/sunxi/dram_cubieboard2.c 
+#sed -e 's/.clock = 480/.clock = 432/g' -i $DEST/u-boot-sunxi/board/sunxi/dram_cubieboard2.c
 
 # Applying patch for crypt and some performance tweaks
-#cd $DEST/linux-sunxi/ 
+#cd $DEST/linux-sunxi/
 #patch -p1 < $SRC/patch/0001-system-more-responsive-in-case-multiple-tasks.patch
 #patch -p1 < $SRC/patch/crypto.patch
 #patch -p1 < $SRC/patch/disp_vsync.patch
 #patch -p1 < $SRC/patch/chip_id.patch
 
 # Applying Patch for "high load". Could cause troubles with USB OTG port
-sed -e 's/usb_detect_type     = 1/usb_detect_type     = 0/g' -i $DEST/cubie_configs/sysconfig/linux/cubietruck.fex 
+#sed -e 's/usb_detect_type     = 1/usb_detect_type     = 0/g' -i $DEST/cubie_configs/sysconfig/linux/cubietruck.fex
 
 # Prepare fex files for VGA & HDMI
-sed -e 's/screen0_output_type.*/screen0_output_type     = 3/g' $DEST/cubie_configs/sysconfig/linux/cubietruck.fex > $DEST/cubie_configs/sysconfig/linux/ct-hdmi.fex
-sed -e 's/screen0_output_type.*/screen0_output_type     = 4/g' $DEST/cubie_configs/sysconfig/linux/cubietruck.fex > $DEST/cubie_configs/sysconfig/linux/ct-vga.fex
+#sed -e 's/screen0_output_type.*/screen0_output_type     = 3/g' $DEST/cubie_configs/sysconfig/linux/cubietruck.fex > $DEST/cubie_configs/sysconfig/linux/ct-hdmi.fex
+#sed -e 's/screen0_output_type.*/screen0_output_type     = 4/g' $DEST/cubie_configs/sysconfig/linux/cubietruck.fex > $DEST/cubie_configs/sysconfig/linux/ct-vga.fex
 
 #--------------------------------------------------------------------------------
 # Compiling everything
@@ -148,7 +156,7 @@ echo "------ Compiling kernel"
 #cd $DEST/linux-sunxi
 #make clean
 ## Adding wlan firmware to kernel source
-#cd $DEST/linux-sunxi/firmware; 
+#cd $DEST/linux-sunxi/firmware;
 #unzip -o $SRC/bin/ap6210.zip
 #cd $DEST/linux-sunxi
 ## get proven config
@@ -170,9 +178,9 @@ fi
 #--------------------------------------------------------------------------------
 # Creating boot directory for current and next kernel
 #--------------------------------------------------------------------------------
-# 
+#
 mkdir -p $DEST/output/boot/
-# Current 
+# Current
 #fex2bin $DEST/cubie_configs/sysconfig/linux/ct-vga.fex $DEST/output/boot/ct-vga.bin
 #fex2bin $DEST/cubie_configs/sysconfig/linux/ct-hdmi.fex $DEST/output/boot/ct-hdmi.bin
 #fex2bin $DEST/cubie_configs/sysconfig/linux/cb2-hdmi.fex $DEST/output/boot/cb2-hdmi.bin
@@ -193,7 +201,7 @@ cp $SRC/output/linux-sunxi-next/arch/arm/boot/uImage $DEST/output/boot/uImage
 # Creating kernel packages: modules + headers + firmware
 #--------------------------------------------------------------------------------
 #
-# Current 
+# Current
 #VER=$(cat $DEST/linux-sunxi/Makefile | grep VERSION | head -1 | awk '{print $(NF)}')
 #VER=$VER.$(cat $DEST/linux-sunxi/Makefile | grep PATCHLEVEL | head -1 | awk '{print $(NF)}')
 #VER=$VER.$(cat $DEST/linux-sunxi/Makefile | grep SUBLEVEL | head -1 | awk '{print $(NF)}')
@@ -256,7 +264,7 @@ tune2fs -o journal_data_writeback $LOOP
 # label it
 e2label $LOOP "Ubuntu"
 
-# create mount point and mount image 
+# create mount point and mount image
 mkdir -p $DEST/output/sdcard/
 mount -t ext4 $LOOP $DEST/output/sdcard/
 
@@ -269,7 +277,7 @@ cp /usr/bin/qemu-arm-static $DEST/output/sdcard/usr/bin/
 test -e /proc/sys/fs/binfmt_misc/qemu-arm || update-binfmts --enable qemu-arm
 # mount proc inside chroot
 mount -t proc chproc $DEST/output/sdcard/proc
-# second stage unmounts proc 
+# second stage unmounts proc
 chroot $DEST/output/sdcard /bin/bash -c "/debootstrap/debootstrap --second-stage"
 # mount proc, sys and dev
 mount -t proc chproc $DEST/output/sdcard/proc
@@ -317,19 +325,19 @@ APT::Install-Recommends "0";
 APT::Install-Suggests "0";
 END
 
-# script to turn off the LED blinking
-cp $SRC/scripts/disable_led.sh $DEST/output/sdcard/etc/init.d/disable_led.sh
-# make it executable
-chroot $DEST/output/sdcard /bin/bash -c "chmod +x /etc/init.d/disable_led.sh"
-# and startable on boot
-chroot $DEST/output/sdcard /bin/bash -c "update-rc.d disable_led.sh defaults" 
+## script to turn off the LED blinking
+##cp $SRC/scripts/disable_led.sh $DEST/output/sdcard/etc/init.d/disable_led.sh
+## make it executable
+##chroot $DEST/output/sdcard /bin/bash -c "chmod +x /etc/init.d/disable_led.sh"
+## and startable on boot
+#chroot $DEST/output/sdcard /bin/bash -c "update-rc.d disable_led.sh defaults"
 
 ## script to show boot splash
 #cp $SRC/scripts/bootsplash $DEST/output/sdcard/etc/init.d/bootsplash
 ## make it executable
 #chroot $DEST/output/sdcard /bin/bash -c "chmod +x /etc/init.d/bootsplash"
 ## and startable on boot
-#chroot $DEST/output/sdcard /bin/bash -c "update-rc.d bootsplash defaults" 
+#chroot $DEST/output/sdcard /bin/bash -c "update-rc.d bootsplash defaults"
 
 # scripts for autoresize at first boot from cubian
 #cd $DEST/output/sdcard/etc/init.d
@@ -338,7 +346,7 @@ chroot $DEST/output/sdcard /bin/bash -c "update-rc.d disable_led.sh defaults"
 ## make it executable
 #chroot $DEST/output/sdcard /bin/bash -c "chmod +x /etc/init.d/cubian-*"
 ## and startable on boot
-#chroot $DEST/output/sdcard /bin/bash -c "update-rc.d cubian-firstrun defaults" 
+#chroot $DEST/output/sdcard /bin/bash -c "update-rc.d cubian-firstrun defaults"
 
 # script to install to NAND & SATA and kernel switchers
 #cp $SRC/scripts/2next.sh $DEST/output/sdcard/root
@@ -348,19 +356,19 @@ cp $SRC/scripts/nand-install.sh $DEST/output/sdcard/root
 cp $SRC/bin/nand1-cubietruck-debian-boot.tgz $DEST/output/sdcard/root
 cp $SRC/bin/ramlog_2.0.0_all.deb $DEST/output/sdcard/tmp
 
-# bluetooth device enabler 
+# bluetooth device enabler
 #cp $SRC/bin/brcm_patchram_plus $DEST/output/sdcard/usr/local/bin
 #chroot $DEST/output/sdcard /bin/bash -c "chmod +x /usr/local/bin/brcm_patchram_plus"
 #cp $SRC/scripts/brcm40183 $DEST/output/sdcard/etc/default
 #cp $SRC/scripts/brcm40183-patch $DEST/output/sdcard/etc/init.d
 #chroot $DEST/output/sdcard /bin/bash -c "chmod +x /etc/init.d/brcm40183-patch"
-#chroot $DEST/output/sdcard /bin/bash -c "update-rc.d brcm40183-patch defaults" 
+#chroot $DEST/output/sdcard /bin/bash -c "update-rc.d brcm40183-patch defaults"
 
 ## install custom bashrc
-##cat $SRC/scripts/bashrc >> $DEST/output/sdcard/etc/bash.bashrc 
+##cat $SRC/scripts/bashrc >> $DEST/output/sdcard/etc/bash.bashrc
 
 echo "Installing aditional applications"
-chroot $DEST/output/sdcard /bin/bash -c "apt-get -qq -y install u-boot-tools makedev libfuse2 libc6 libnl-3-dev bluetooth libbluetooth3 libbluetooth-dev alsa-utils sysfsutils hddtemp bc screen hdparm libfuse2 ntfs-3g bash-completion lsof sudo git hostapd dosfstools htop openssh-server ca-certificates module-init-tools dhcp3-client udev ifupdown iproute iputils-ping ntp rsync usbutils pciutils wireless-tools wpasupplicant procps parted cpufrequtils unzip bridge-utils"
+chroot $DEST/output/sdcard /bin/bash -c "apt-get -qq -y install u-boot-tools makedev libfuse2 libc6 libnl-3-dev alsa-utils sysfsutils hddtemp bc screen hdparm libfuse2 ntfs-3g bash-completion lsof sudo git hostapd dosfstools htop openssh-server ca-certificates module-init-tools dhcp3-client udev ifupdown iproute iputils-ping ntp rsync usbutils pciutils wireless-tools wpasupplicant procps parted cpufrequtils unzip bridge-utils"
 # removed in 2.4 #chroot $DEST/output/sdcard /bin/bash -c "apt-get -qq -y install console-setup console-data"
 chroot $DEST/output/sdcard /bin/bash -c "apt-get -y clean"
 
@@ -382,11 +390,11 @@ chroot $DEST/output/sdcard /bin/bash -c "apt-get -y clean"
 # ramlog
 chroot $DEST/output/sdcard /bin/bash -c "dpkg -i /tmp/ramlog_2.0.0_all.deb"
 sed -e 's/TMPFS_RAMFS_SIZE=/TMPFS_RAMFS_SIZE=256m/g' -i $DEST/output/sdcard/etc/default/ramlog
-sed -e 's/# Required-Start:    $remote_fs $time/# Required-Start:    $remote_fs $time ramlog/g' -i $DEST/output/sdcard/etc/init.d/rsyslog 
-sed -e 's/# Required-Stop:     umountnfs $time/# Required-Stop:     umountnfs $time ramlog/g' -i $DEST/output/sdcard/etc/init.d/rsyslog   
+sed -e 's/# Required-Start:    $remote_fs $time/# Required-Start:    $remote_fs $time ramlog/g' -i $DEST/output/sdcard/etc/init.d/rsyslog
+sed -e 's/# Required-Stop:     umountnfs $time/# Required-Stop:     umountnfs $time ramlog/g' -i $DEST/output/sdcard/etc/init.d/rsyslog
 
 # console
-chroot $DEST/output/sdcard /bin/bash -c "export TERM=linux" 
+chroot $DEST/output/sdcard /bin/bash -c "export TERM=linux"
 
 # Change Time zone data
 echo $TZDATA > $DEST/output/sdcard/etc/timezone
@@ -405,16 +413,16 @@ sed -e 's/MAX_SPEED="0"/MAX_SPEED="1010000"/g' -i $DEST/output/sdcard/etc/init.d
 #EOF
 
 # set root password
-chroot $DEST/output/sdcard /bin/bash -c "(echo $ROOTPWD;echo $ROOTPWD;) | passwd root" 
-# force password change upon first login 
-#chroot $DEST/output/sdcard /bin/bash -c "chage -d 0 root" 
+chroot $DEST/output/sdcard /bin/bash -c "(echo $ROOTPWD;echo $ROOTPWD;) | passwd root"
+# force password change upon first login
+#chroot $DEST/output/sdcard /bin/bash -c "chage -d 0 root"
 
 if [ "$RELEASE" = "trusty" ]; then
 # enable root login for latest ssh on trusty
 sed -i 's/PermitRootLogin without-password/PermitRootLogin yes/' $DEST/output/sdcard/etc/ssh/sshd_config || fail
 fi
 
-# set hostname 
+# set hostname
 echo $HOST > $DEST/output/sdcard/etc/hostname
 
 # set hostname in hosts file
@@ -464,7 +472,7 @@ iface eth0 inet dhcp
 #auto wlan0
 #allow-hotplug wlan0
 #iface wlan0 inet dhcp
-#    wpa-ssid SSID 
+#    wpa-ssid SSID
 #    wpa-psk xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 # to generate proper encrypted key: wpa_passphrase yourSSID yourpassword
 EOT
@@ -491,10 +499,10 @@ echo "/dev/mmcblk0p1  /           ext4    defaults,noatime,nodiratime,data=write
 
 # flash media tunning
 #sed -e 's/#RAMTMP=no/RAMTMP=yes/g' -i $DEST/output/sdcard/etc/default/tmpfs
-#sed -e 's/#RUN_SIZE=10%/RUN_SIZE=128M/g' -i $DEST/output/sdcard/etc/default/tmpfs 
-#sed -e 's/#LOCK_SIZE=/LOCK_SIZE=/g' -i $DEST/output/sdcard/etc/default/tmpfs 
-#sed -e 's/#SHM_SIZE=/SHM_SIZE=128M/g' -i $DEST/output/sdcard/etc/default/tmpfs 
-#sed -e 's/#TMP_SIZE=/TMP_SIZE=1G/g' -i $DEST/output/sdcard/etc/default/tmpfs 
+#sed -e 's/#RUN_SIZE=10%/RUN_SIZE=128M/g' -i $DEST/output/sdcard/etc/default/tmpfs
+#sed -e 's/#LOCK_SIZE=/LOCK_SIZE=/g' -i $DEST/output/sdcard/etc/default/tmpfs
+#sed -e 's/#SHM_SIZE=/SHM_SIZE=128M/g' -i $DEST/output/sdcard/etc/default/tmpfs
+#sed -e 's/#TMP_SIZE=/TMP_SIZE=1G/g' -i $DEST/output/sdcard/etc/default/tmpfs
 
 # enable serial console (Debian/sysvinit way)
 #echo T0:2345:respawn:/sbin/getty -L ttyS0 115200 vt100 >> $DEST/output/sdcard/etc/inittab
@@ -534,8 +542,8 @@ find $DEST/output/sdcard/lib/modules -type l -exec rm -f {} \;
 #sed -e 's/%DAEMONNAME_TAG%/usbsrvd/g' $DEST/usb-redirector-linux-arm-eabi/files/rc.usbsrvd1 > $DEST/usb-redirector-linux-arm-eabi/files/rc.usbsrvd
 #chmod +x $DEST/usb-redirector-linux-arm-eabi/files/rc.usbsrvd
 ## copy to root
-#cp $DEST/usb-redirector-linux-arm-eabi/files/usb* $DEST/output/sdcard/usr/local/bin/ 
-#cp $DEST/usb-redirector-linux-arm-eabi/files/modules/src/tusbd/tusbd.ko $DEST/output/sdcard/usr/local/bin/ 
+#cp $DEST/usb-redirector-linux-arm-eabi/files/usb* $DEST/output/sdcard/usr/local/bin/
+#cp $DEST/usb-redirector-linux-arm-eabi/files/modules/src/tusbd/tusbd.ko $DEST/output/sdcard/usr/local/bin/
 #cp $DEST/usb-redirector-linux-arm-eabi/files/rc.usbsrvd $DEST/output/sdcard/etc/init.d/
 ## not started by default ----- update.rc rc.usbsrvd defaults
 ## chroot $DEST/output/sdcard /bin/bash -c "update-rc.d rc.usbsrvd defaults"
@@ -552,7 +560,7 @@ find $DEST/output/sdcard/lib/modules -type l -exec rm -f {} \;
 # sunxi-tools
 cd $DEST/sunxi-tools
 make clean && make $CTHREADS 'fex2bin' CC=arm-linux-gnueabihf-gcc && make $CTHREADS 'bin2fex' CC=arm-linux-gnueabihf-gcc && make $CTHREADS 'nand-part' CC=arm-linux-gnueabihf-gcc
-cp fex2bin $DEST/output/sdcard/usr/bin/ 
+cp fex2bin $DEST/output/sdcard/usr/bin/
 cp bin2fex $DEST/output/sdcard/usr/bin/
 cp nand-part $DEST/output/sdcard/usr/bin/
 sync
@@ -575,9 +583,9 @@ HDMI=$VERSION"_hdmi"
 
 sleep 5
 
-rm $DEST/output/sdcard/usr/bin/qemu-arm-static 
-# umount images 
-umount -l $DEST/output/sdcard/ 
+rm $DEST/output/sdcard/usr/bin/qemu-arm-static
+# umount images
+umount -l $DEST/output/sdcard/
 losetup -d $LOOP
 
 cp $DEST/output/debian_rootfs.raw $DEST/output/$HDMI.raw
@@ -593,7 +601,7 @@ rm $HDMI.raw $HDMI.md5
 #mount $LOOP $DEST/output/sdcard/
 #sed -e 's/ct-hdmi.bin/ct-vga.bin/g' -i $DEST/output/sdcard/boot/uEnv.ct
 ##sed -e 's/cb2-hdmi.bin/cb2-vga.bin/g' -i $DEST/output/sdcard/boot/uEnv.cb2
-#umount -l $DEST/output/sdcard/ 
+#umount -l $DEST/output/sdcard/
 #losetup -d $LOOP
 #mv $DEST/output/debian_rootfs.raw $DEST/output/$VGA.raw
 #cd $DEST/output/
