@@ -10,9 +10,12 @@
 #
 
 # MISSING:
-#  Allwinner SoCs PWM support (https://lkml.org/lkml/2014/5/19/568)
 #  Allwinner Security System crypto accelerator (http://lists.infradead.org/pipermail/linux-arm-kernel/2014-June/265465.html)
 #  sunxi NAND Flash Controller support (http://lists.infradead.org/pipermail/linux-arm-kernel/2014-March/239885.html)
+
+# TO get u-boot simple framebuffer output add this to boot.cmd
+# setenv stdout serial,vga
+# setenv stderr serial,vga
 
 #set -x
 
@@ -119,9 +122,6 @@ if [ "$SOURCE_COMPILE" = "yes" ]; then
 # Patching
 #--------------------------------------------------------------------------------
 
-# Applying Patch for CB2 stability
-#sed -e 's/.clock = 480/.clock = 432/g' -i $DEST/u-boot-sunxi/board/sunxi/dram_cubieboard2.c
-
 # Applying patch for crypt and some performance tweaks
 #cd $DEST/linux-sunxi/
 #patch -p1 < $SRC/patch/0001-system-more-responsive-in-case-multiple-tasks.patch
@@ -140,16 +140,12 @@ if [ "$SOURCE_COMPILE" = "yes" ]; then
 # Compiling everything
 #--------------------------------------------------------------------------------
 
-# boot loader
+# Boot loader next.
 echo "------ Compiling universal boot loader."
-#cd $DEST/u-boot-sunxi
-#make clean && make $CTHREADS 'cubietruck' CROSS_COMPILE=arm-linux-gnueabihf-
-
-# boot loader next
 cd $DEST/u-boot-sunxi-next
-make clean && make $CTHREADS Cubietruck_defconfig CROSS_COMPILE=arm-linux-gnueabihf- && make $CTHREADS CROSS_COMPILE=arm-linux-gnueabihf-
-# currently broken. using binary
-#cp $SRC/bin/uboot-next.bin $DEST/u-boot-sunxi-next/u-boot-sunxi-with-spl.bin
+make clean CROSS_COMPILE=arm-linux-gnueabihf-
+make $CTHREADS Cubietruck_defconfig CROSS_COMPILE=arm-linux-gnueabihf-
+make $CTHREADS CROSS_COMPILE=arm-linux-gnueabihf-
 
 # Sunxi Tools.
 echo "------ Compiling sunxi tools."
@@ -157,34 +153,37 @@ cd $DEST/sunxi-tools
 make clean && make fex2bin && make bin2fex
 cp fex2bin bin2fex /usr/local/bin/
 
-# kernel image stable
+# Kernel image,
 echo "------ Compiling kernel."
 #cd $DEST/linux-sunxi
 #make clean
 ## Adding wlan firmware to kernel source
 #cd $DEST/linux-sunxi/firmware;
 #unzip -o $SRC/bin/ap6210.zip
-#cd $DEST/linux-sunxi
-## get proven config
-#cp $SRC/config/kernel.config $DEST/linux-sunxi/.config
-#make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- uImage modules
-#make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_MOD_PATH=output modules_install
-#make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_HDR_PATH=output/usr headers_install
-#cp $DEST/linux-sunxi/Module.symvers $DEST/linux-sunxi/output/usr/include
-# kernel image experimental
 cd $DEST/linux-sunxi-next
-make clean
+make clean CROSS_COMPILE=arm-linux-gnueabihf-
 cp $SRC/config/kernel.config.next $DEST/linux-sunxi-next/.config
+#make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- olddefconfig
 make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- LOADADDR=0x40008000 uImage modules dtbs
+rm -rf output
 make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_MOD_PATH=output modules_install
 make $CTHREADS ARCH=arm CROSS_COMPILE=arm-linux-gnueabihf- INSTALL_HDR_PATH=output/usr headers_install
 cp $DEST/linux-sunxi-next/Module.symvers $DEST/linux-sunxi-next/output/usr/include
 fi
 
+# Firmware.
+# Download from (http://dl.cubieboard.org/public/Cubieboard/benn/firmware/ap6210/)
+cd $DEST/linux-sunxi-next/output/lib/firmware
+unzip -o $SRC/bin/ap6210.zip
+# Add one currently missing file to the wifi-firmware:
+mkdir $DEST/linux-sunxi-next/output/lib/firmware/brcm
+cp -f $DEST/linux-sunxi-next/output/lib/firmware/ap6210/nvram_ap6210.txt $DEST/linux-sunxi-next/output/lib/firmware/brcm/brcmfmac43362-sdio.txt
+
 #--------------------------------------------------------------------------------
 # Creating boot directory for current and next kernel
 #--------------------------------------------------------------------------------
 #
+echo "------ Creating boot folder."
 mkdir -p $DEST/output/boot/
 # Current
 #fex2bin $DEST/cubie_configs/sysconfig/linux/ct-vga.fex $DEST/output/boot/ct-vga.bin
@@ -205,6 +204,7 @@ cp $SRC/output/linux-sunxi-next/arch/arm/boot/uImage $DEST/output/boot/uImage
 
 #--------------------------------------------------------------------------------
 # Creating kernel packages: modules + headers + firmware
+echo "------ Creating kernel package."
 #--------------------------------------------------------------------------------
 #
 # Current
@@ -229,6 +229,8 @@ tar rPf $DEST"/output/sunxi_kernel_"$VER"_mod_head_fw.tar" boot/*
 # creating MD5 sum
 md5sum sunxi_kernel_"$VER"_mod_head_fw.tar > sunxi_kernel_"$VER"_mod_head_fw.md5
 zip sunxi_kernel_"$VER"_mod_head_fw.zip sunxi_kernel_"$VER"_mod_head_fw.*
+
+exit
 
 #--------------------------------------------------------------------------------
 # Creating SD Images
@@ -372,7 +374,7 @@ cp $SRC/bin/ramlog_2.0.0_all.deb $rootfs/tmp
 #chroot $DEST/output/sdcard /bin/bash -c "update-rc.d brcm40183-patch defaults"
 
 # Install aditional applications.
-chroot $rootfs /bin/bash -c "apt-get -qq -y install u-boot-tools makedev libfuse2 libc6 libnl-3-dev alsa-utils sysfsutils hddtemp bc screen hdparm libfuse2 ntfs-3g bash-completion lsof sudo git hostapd dosfstools htop openssh-server ca-certificates module-init-tools dhcp3-client udev ifupdown iproute iputils-ping ntp rsync usbutils pciutils wireless-tools wpasupplicant procps parted cpufrequtils unzip bridge-utils"
+chroot $rootfs /bin/bash -c "apt-get -qq -y install u-boot-tools makedev libfuse2 libc6 libnl-3-dev alsa-utils sysfsutils hddtemp bc screen hdparm libfuse2 ntfs-3g bash-completion lsof sudo git dosfstools htop openssh-server ca-certificates module-init-tools dhcp3-client udev ifupdown iproute iputils-ping ntp rsync usbutils pciutils wireless-tools wpasupplicant procps parted cpufrequtils unzip bridge-utils linux-firmware"
 # removed in 2.4 #chroot $DEST/output/sdcard /bin/bash -c "apt-get -qq -y install console-setup console-data"
 chroot $rootfs /bin/bash -c "apt-get -y clean"
 
@@ -447,9 +449,9 @@ cat <<EOT >> $rootfs/etc/modules
 #sunxi_lirc
 #bcmdhd
 #sunxi_ss
+EOT
 # if you want access point mode, load wifi module this way: bcmdhd op_mode=2
 # and edit /etc/init.d/hostapd change DAEMON_CONF=/etc/hostapd.conf ; edit your wifi net settings in hostapd.conf ; reboot
-EOT
 
 # Create interfaces configuration.
 cat <<EOT >> $rootfs/etc/network/interfaces
@@ -466,21 +468,21 @@ iface eth0 inet dhcp
 # to generate proper encrypted key: wpa_passphrase yourSSID yourpassword
 EOT
 
-# Create interfaces if you want to have AP. /etc/modules must be: bcmdhd op_mode=2.
-cat <<EOT >> $rootfs/etc/network/interfaces.hostapd
-auto lo br0
-iface lo inet loopback
-
-allow-hotplug eth0
-iface eth0 inet manual
-
-allow-hotplug wlan0
-iface wlan0 inet manual
-
-iface br0 inet dhcp
-bridge_ports eth0 wlan0
-hwaddress ether # will be added at first boot
-EOT
+## Create interfaces if you want to have AP. /etc/modules must be: bcmdhd op_mode=2.
+#cat <<EOT >> $rootfs/etc/network/interfaces.hostapd
+#auto lo br0
+#iface lo inet loopback
+#
+#allow-hotplug eth0
+#iface eth0 inet manual
+#
+#allow-hotplug wlan0
+#iface wlan0 inet manual
+#
+#iface br0 inet dhcp
+#bridge_ports eth0 wlan0
+#hwaddress ether # will be added at first boot
+#EOT
 
 # Add noatime to root FS.
 echo "/dev/mmcblk0p1  /           ext4    defaults,noatime,nodiratime,data=writeback,commit=600,errors=remount-ro        0       0" >> $DEST/output/sdcard/etc/fstab
@@ -556,20 +558,6 @@ rm -f $rootfs/usr/sbin/policy-rc.d
 
 sync
 sleep 30
-
-# Kill processes still running in chroot.
-for rootpath in /proc/*/root; do
-    rootlink=$(readlink $rootpath)
-    if [ "x$rootlink" != "x" ]; then
-        if [ "x${rootlink:0:${#rootfs}}" = "x$rootfs" ]; then
-            # this process is in the chroot...
-            PID=$(basename $(dirname "$rootpath"))
-            kill -9 "$PID"
-        fi
-    fi
-done
-
-sleep 5
 
 # unmount proc, sys and dev from chroot
 umount -l $rootfs/dev/pts || true
