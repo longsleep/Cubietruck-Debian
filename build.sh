@@ -72,17 +72,12 @@ mkdir -p $DEST/output
 
 if [ -d "$DEST/u-boot-sunxi-next" ]
 then
-	cd $DEST/u-boot-sunxi-next ; git pull; cd $SRC
+	echo "Use existing u-boot checkout ..."
+	#cd $DEST/u-boot-sunxi-next ; git pull; cd $SRC
 else
 	git clone https://github.com/longsleep/u-boot-sunxi/ -b sunxi-next $DEST/u-boot-sunxi-next            # For booting experimental kernel
 fi
 
-#if [ -d "$DEST/u-boot-sunxi" ]
-#then
-#	cd $DEST/u-boot-sunxi ; git pull; cd $SRC
-#else
-#	git clone https://github.com/patrickhwood/u-boot -b pat-cb2-ct  $DEST/u-boot-sunxi               # Cubieboard 2 / Cubietruck Dual boot loader
-#fi
 if [ -d "$DEST/sunxi-tools" ]
 then
 	cd $DEST/sunxi-tools; git pull; cd $SRC
