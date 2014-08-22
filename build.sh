@@ -110,7 +110,6 @@ else
 	git clone https://github.com/matzrh/sunxi-lirc $DEST/sunxi-lirc                                 # Lirc RX and TX functionality for Allwinner A1X and A20 chips
 fi
 
-
 if [ "$SOURCE_COMPILE" = "yes" ]; then
 
 #--------------------------------------------------------------------------------
@@ -355,10 +354,15 @@ END
 # script to install to NAND & SATA and kernel switchers
 #cp $SRC/scripts/2next.sh $DEST/output/sdcard/root
 #cp $SRC/scripts/2current.sh $DEST/output/sdcard/root
-cp $SRC/scripts/nand-install.sh $rootfs/root
+#cp $SRC/scripts/nand-install.sh $rootfs/root
 #cp $SRC/scripts/sata-install.sh $DEST/output/sdcard/root
 cp $SRC/bin/nand1-cubietruck-debian-boot.tgz $rootfs/root
 cp $SRC/bin/ramlog_2.0.0_all.deb $rootfs/tmp
+cp $SRC/bin/mtd-utils_1.5.1-1_armhf.deb $rootfs/tmp
+
+# Tnsstall test scripts.
+mkdir $rootfs/root/test-scripts
+cp -r $SRC/scripts/test-scripts/* $rootfs/root/test-scripts
 
 # bluetooth device enabler
 #cp $SRC/bin/brcm_patchram_plus $DEST/output/sdcard/usr/local/bin
@@ -369,7 +373,7 @@ cp $SRC/bin/ramlog_2.0.0_all.deb $rootfs/tmp
 #chroot $DEST/output/sdcard /bin/bash -c "update-rc.d brcm40183-patch defaults"
 
 # Install aditional applications.
-chroot $rootfs /bin/bash -c "apt-get -qq -y install u-boot-tools makedev libfuse2 libc6 libnl-3-dev alsa-utils sysfsutils hddtemp bc screen hdparm libfuse2 ntfs-3g bash-completion lsof sudo git dosfstools htop openssh-server ca-certificates module-init-tools dhcp3-client udev ifupdown iproute iputils-ping ntp rsync usbutils pciutils wireless-tools wpasupplicant procps parted cpufrequtils unzip bridge-utils linux-firmware mtd-utils"
+chroot $rootfs /bin/bash -c "apt-get -qq -y install u-boot-tools makedev libfuse2 libc6 libnl-3-dev alsa-utils sysfsutils hddtemp bc screen hdparm libfuse2 ntfs-3g bash-completion lsof sudo git dosfstools htop openssh-server ca-certificates module-init-tools dhcp3-client udev ifupdown iproute iputils-ping ntp rsync usbutils pciutils wireless-tools wpasupplicant procps parted cpufrequtils unzip bridge-utils linux-firmware liblzo2-2 busybox-static"
 # removed in 2.4 #chroot $DEST/output/sdcard /bin/bash -c "apt-get -qq -y install console-setup console-data"
 chroot $rootfs /bin/bash -c "apt-get -y clean"
 
@@ -382,6 +386,9 @@ chroot $rootfs /bin/bash -c "dpkg -i /tmp/ramlog_2.0.0_all.deb"
 sed -e 's/TMPFS_RAMFS_SIZE=/TMPFS_RAMFS_SIZE=256m/g' -i $rootfs/etc/default/ramlog
 sed -e 's/# Required-Start:    $remote_fs $time/# Required-Start:    $remote_fs $time ramlog/g' -i $rootfs/etc/init.d/rsyslog
 sed -e 's/# Required-Stop:     umountnfs $time/# Required-Stop:     umountnfs $time ramlog/g' -i $rootfs/etc/init.d/rsyslog
+
+# Mtd-utils
+chroot $rootfs /bin/bash -c "dpkg -i /tmp/mtd-utils_1.5.1-1_armhf.deb"
 
 # Console.
 chroot $rootfs /bin/bash -c "export TERM=linux"
@@ -542,11 +549,12 @@ find $rootfs/lib/modules -type l -exec rm -f {} \;
 #tar xvfz $SRC/bin/temper.tgz
 
 # sunxi-tools
-cd $DEST/sunxi-tools
-make clean && make $CTHREADS 'fex2bin' CC=arm-linux-gnueabihf-gcc && make $CTHREADS 'bin2fex' CC=arm-linux-gnueabihf-gcc && make $CTHREADS 'nand-part' CC=arm-linux-gnueabihf-gcc
-cp fex2bin $rootfs/usr/bin/
-cp bin2fex $rootfs/usr/bin/
-cp nand-part $rootfs/usr/bin/
+#echo "------ Compiling sunxi-tools for ARM."
+#cd $DEST/sunxi-tools
+#make clean && make $CTHREADS 'fex2bin' CC=arm-linux-gnueabihf-gcc && make $CTHREADS 'bin2fex' CC=arm-linux-gnueabihf-gcc && make $CTHREADS 'nand-part' CC=arm-linux-gnueabihf-gcc
+#cp fex2bin $rootfs/usr/bin/
+#cp bin2fex $rootfs/usr/bin/
+#cp nand-part $rootfs/usr/bin/
 
 # cleanup
 rm -f $rootfs/usr/sbin/policy-rc.d
