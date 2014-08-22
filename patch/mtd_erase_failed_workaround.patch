@@ -1,0 +1,15 @@
+diff --git a/drivers/mtd/nand/nand_base.c b/drivers/mtd/nand/nand_base.c
+index 2b8e8db..edb3383 100644
+--- a/drivers/mtd/nand/nand_base.c
++++ b/drivers/mtd/nand/nand_base.c
+@@ -3312,8 +3312,10 @@ int nand_erase_nand(struct mtd_info *mtd, struct erase_info *instr,
+ 					chip->page_shift, 0, allowbbt)) {
+ 			pr_warn("%s: attempt to erase a bad block at page 0x%08x\n",
+ 				    __func__, page);
++			/*
+ 			instr->state = MTD_ERASE_FAILED;
+ 			goto erase_exit;
++			*/
+ 		}
+ 
+ 		/*
