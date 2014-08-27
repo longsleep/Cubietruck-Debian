@@ -509,6 +509,7 @@ CONFIG_GENERIC_CPUFREQ_CPU0=m
 # ARM CPU frequency scaling drivers
 #
 # CONFIG_ARM_KIRKWOOD_CPUFREQ is not set
+CONFIG_ARM_SUNXI_CPUFREQ=y
 
 #
 # CPU Idle
@@ -1375,7 +1376,7 @@ CONFIG_SPI_SUN6I=y
 #
 # SPI Protocol Masters
 #
-# CONFIG_SPI_SPIDEV is not set
+CONFIG_SPI_SPIDEV=y
 # CONFIG_SPI_TLE62X0 is not set
 # CONFIG_SPMI is not set
 # CONFIG_HSI is not set
@@ -2083,7 +2084,27 @@ CONFIG_RTC_DRV_SUNXI=y
 # HID Sensor RTC drivers
 #
 # CONFIG_RTC_DRV_HID_SENSOR_TIME is not set
-# CONFIG_DMADEVICES is not set
+CONFIG_DMADEVICES=y
+# CONFIG_DMADEVICES_DEBUG is not set
+
+#
+# DMA Devices
+#
+# CONFIG_DW_DMAC_CORE is not set
+# CONFIG_DW_DMAC is not set
+# CONFIG_FSL_EDMA is not set
+CONFIG_DMA_SUN6I=y
+# CONFIG_NBPFAXI_DMA is not set
+CONFIG_SUN4I_DMA=y
+CONFIG_DMA_ENGINE=y
+CONFIG_DMA_VIRTUAL_CHANNELS=y
+CONFIG_DMA_OF=y
+
+#
+# DMA Clients
+#
+# CONFIG_ASYNC_TX_DMA is not set
+# CONFIG_DMATEST is not set
 # CONFIG_AUXDISPLAY is not set
 # CONFIG_UIO is not set
 # CONFIG_VIRT_DRIVERS is not set
